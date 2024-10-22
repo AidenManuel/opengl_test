@@ -3,6 +3,9 @@ extern crate glium;
 
 use glium::Surface;
 
+#[path = "../models/tuto-07-teapot.rs"]
+mod teapot;
+
 fn main() {
     let event_loop = glium::winit::event_loop::EventLoop::builder()
         .build()
@@ -14,14 +17,18 @@ fn main() {
     #[derive(Copy, Clone)]
     struct Vertex {
         position: [f32; 2],
-        color: [f32; 3],
+        tex_coords: [f32; 2],
     }
-    implement_vertex!(Vertex, position, color);
+    implement_vertex!(Vertex, position, tex_coords);
     
     let shape = vec![
-        Vertex { position: [-0.5, -0.5], color: [1.0, 0.0, 0.0] },
-        Vertex { position: [ 0.0,  0.5], color: [0.0, 1.0, 0.0] },
-        Vertex { position: [ 0.5, -0.25], color: [0.0, 0.0, 1.0] }
+        Vertex { position: [-0.5, -0.5], tex_coords: [0.0, 0.0] },
+        Vertex { position: [ 0.5, -0.5], tex_coords: [1.0, 0.0] },
+        Vertex { position: [ 0.5,  0.5], tex_coords: [1.0, 1.0] },
+
+        Vertex { position: [ 0.5,  0.5], tex_coords: [1.0, 1.0] },
+        Vertex { position: [-0.5,  0.5], tex_coords: [0.0, 1.0] },
+        Vertex { position: [-0.5, -0.5], tex_coords: [0.0, 0.0] },
     ];
 
     // A buffer to put those vertices in so they can be handed off to the GPU
@@ -35,13 +42,13 @@ fn main() {
         #version 140
 
         in vec2 position;
-        in vec3 color;      // our new attribute
-        out vec3 vertex_color;
+        in vec2 tex_coords;
+        out vec2 v_tex_coords;
 
         uniform mat4 matrix;
 
         void main() {
-            vertex_color = color; // we need to set the value of each `out` variable.
+            v_tex_coords = tex_coords;
             gl_Position = matrix * vec4(position, 0.0, 1.0);
         }
     "#;
@@ -49,15 +56,26 @@ fn main() {
     let fragment_shader_src = r#"
         #version 140
 
-        in vec3 vertex_color;
+        in vec2 v_tex_coords;
         out vec4 color;
 
+        uniform sampler2D tex;
+
         void main() {
-            color = vec4(vertex_color, 1.0);   // We need an alpha value as well
+            color = texture(tex, v_tex_coords);
         }
     "#;
 
     let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
+
+    // Adding Textures
+    let image = image::load(std::io::Cursor::new(&include_bytes!("../images/hmmm.png")),
+                        image::ImageFormat::Png).unwrap().to_rgba8();
+    let image_dimensions = image.dimensions();
+    let image = glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
+
+    let texture = glium::texture::Texture2d::new(&display, image).unwrap();
+
     
     let mut t: f32 = 0.0;
     let _ = event_loop.run(move |event, window_target| {
@@ -72,17 +90,17 @@ fn main() {
                     t += 0.015;
                     // We use the sine of t as an offset, this way we get a nice smooth animation
                     let x = t.sin() * 0.5;
-                    let r_off = t.cos() * 0.5 + 0.5;
     
                     let mut target = display.draw();
-                    target.clear_color(r_off, 0.0, r_off, 1.0);
+                    target.clear_color(0.85, 0.65, 0.72, 1.0);
                     let uniforms = uniform! {
                         matrix: [
                             [ t.cos(),  t.sin(),    0.0, 0.0],
                             [-t.sin(),  t.cos(),    0.0, 0.0],
                             [0.0,       0.0,        1.0, 0.0],
                             [0.0,       0.0,        0.0, 1.0f32],
-                        ]
+                        ],
+                        tex: &texture,
                     };
 
                     target.draw(&vertex_buffer, &indices, &program, &uniforms,
